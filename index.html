@@ -97,6 +97,7 @@ summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
     <button id="bSet" aria-label="設定">設定</button>
   </header>
   <div id="vwrap"><video id="v" playsinline webkit-playsinline preload="auto"></video></div>
+  <video id="cam" muted playsinline style="position:fixed;width:2px;height:2px;opacity:0;pointer-events:none"></video>
   <div id="rollwrap"><canvas id="cv"></canvas><div id="lyric"></div>
     <button id="bMark" aria-label="ずれを記録">⚑ ずれ</button>
     <div id="repBar" hidden><span id="repTxt"></span><button id="bRepEnd">終了</button></div></div>
@@ -149,6 +150,8 @@ summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
       <select id="sRate"><option value="1" selected>1.0倍</option><option value="0.9">0.9倍</option><option value="0.8">0.8倍</option><option value="0.7">0.7倍</option></select></label>
     <label>録画（画面と声）
       <select id="sRecv"><option value="1" selected>する</option><option value="0">しない</option></select></label>
+    <label>顔を録画（前面カメラ）
+      <select id="sFace"><option value="0" selected>しない</option><option value="1">する（動画の右下に小さく）</option></select></label>
   </div>
   <div class="row"><button id="bLoop">フレーズをくり返す: OFF</button><button id="bReset">採点をリセット</button></div>
   <div class="step"><b>ずれの記録 <span id="markN" class="muted">0件</span></b>
@@ -212,7 +215,7 @@ function toast(s){const e=$("toast");e.textContent=s;e.hidden=false;clearTimeout
 
 let rec=null, rep=null, takes=[], mr=null, mrChunks=[], recDest=null, vSrc=null, rc=null, rx=null, lastRc=0, vidUrl=null, vidBlob=null, vidName="";
 /* ---------- 設定 ---------- */
-const S={tol:50,fold:1,ref:443.5,rate:1,gate:12,off:0,loop:false,sm:2,recv:1};
+const S={tol:50,fold:1,ref:443.5,rate:1,gate:12,off:0,loop:false,sm:2,recv:1,face:0};
 try{Object.assign(S,JSON.parse(localStorage.getItem("daiku_set3")||"{}"))}catch(e){}
 const save=()=>{try{localStorage.setItem("daiku_set3",JSON.stringify(S))}catch(e){}};
 const SM=[0,120,250,400];   // なめらかさ(ms)
@@ -279,6 +282,7 @@ const play=()=>{if(!hasVideo||!hasData){openSheet("shInit");return}v.playbackRat
 $("bPlay").onclick=async()=>{
   if(!v.paused){v.pause();return}
   if(!micOn&&!micTried&&!rep)await startMic();
+  if(S.face&&!camStream&&!camTried&&!rep)await startCam();
   play();
 };
 v.addEventListener("play",()=>{$("bPlay").textContent="⏸";contStart=v.currentTime;lastT=v.currentTime;startRec()});
@@ -301,13 +305,13 @@ async function wake(){try{if(navigator.wakeLock)window._wl=await navigator.wakeL
 /* ---------- 設定UI ---------- */
 function syncUI(){
   $("sTol").value=String(S.tol);$("sFold").value=String(S.fold);$("sRate").value=String(S.rate);$("sGate").value=S.gate;
-  $("sOff").value=S.off;$("offTxt").textContent=(S.off>0?"+":"")+S.off;$("sSm").value=String(S.sm);$("sRecv").value=String(S.recv);
+  $("sOff").value=S.off;$("offTxt").textContent=(S.off>0?"+":"")+S.off;$("sSm").value=String(S.sm);$("sRecv").value=String(S.recv);$("sFace").value=String(S.face);
   if(![...$("sRef").options].find(x=>+x.value===S.ref))$("sRef").add(new Option(S.ref,S.ref));$("sRef").value=String(S.ref);
   $("bLoop").textContent="フレーズをくり返す: "+(S.loop?"ON":"OFF");$("bLoop").classList.toggle("on",S.loop);
   $("gauge").style.setProperty("--tol",(Math.min(100,S.tol)/100*50)+"%");
   if(!rep)v.playbackRate=S.rate;
 }
-["sTol","sFold","sRef","sRate","sSm","sRecv"].forEach(id=>$(id).onchange=()=>{S.tol=+$("sTol").value;S.fold=+$("sFold").value;S.ref=+$("sRef").value;S.rate=+$("sRate").value;S.sm=+$("sSm").value;S.recv=+$("sRecv").value;save();syncUI()});
+["sTol","sFold","sRef","sRate","sSm","sRecv","sFace"].forEach(id=>$(id).onchange=()=>{S.tol=+$("sTol").value;S.fold=+$("sFold").value;S.ref=+$("sRef").value;S.rate=+$("sRate").value;S.sm=+$("sSm").value;S.recv=+$("sRecv").value;S.face=+$("sFace").value;save();syncUI();if(S.face)startCam();else stopCam()});
 $("sGate").oninput=()=>{S.gate=+$("sGate").value;save()};
 function setOff(ms){S.off=Math.max(-500,Math.min(500,ms));save();syncUI();if(hasData&&!rep)applyShift(S.off)}
 $("sOff").oninput=()=>setOff(+$("sOff").value);
@@ -445,6 +449,15 @@ function fillScore(){
 
 /* ---------- 記録(テイク)・録画・振り返り ---------- */
 DB.get("takes").then(t=>{if(Array.isArray(t))takes=t;renderTakes()});
+let camStream=null,camTried=false;
+async function startCam(){
+  if(camStream)return;camTried=true;
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:640},height:{ideal:480}},audio:false});
+    const c=$("cam");c.srcObject=camStream;await c.play().catch(()=>{});toast("カメラ準備OK（録画の右下に顔が入ります）");
+  }catch(e){camStream=null;toast("カメラが使えません。Safariの設定でカメラを許可してください（顔なしで録画します）")}
+}
+function stopCam(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null}$("cam").srcObject=null;camTried=false}
 function setupRecGraph(){
   if(recDest||!actx||!micSrc)return true;
   try{
@@ -470,6 +483,13 @@ function drawRec(){
   rx.fillStyle=COL("--bg");rx.fillRect(0,0,RW,H);
   if(v.videoWidth)rx.drawImage(v,0,0,RW,405);
   rx.drawImage(cv,0,0,cv.width,cv.height,0,410,RW,rh);
+  if(S.face&&camStream){const c=$("cam");
+    if(c.videoWidth){const cw=176,ch=132,cx=RW-cw-8,cy=405-ch-8;
+      rx.save();rx.beginPath();rx.rect(cx,cy,cw,ch);rx.clip();
+      const sr=c.videoWidth/c.videoHeight,tr=cw/ch;let sw=c.videoWidth,sh=c.videoHeight,sx=0,sy=0;
+      if(sr>tr){sw=sh*tr;sx=(c.videoWidth-sw)/2}else{sh=sw/tr;sy=(c.videoHeight-sh)/2}
+      rx.translate(cx+cw,cy);rx.scale(-1,1);rx.drawImage(c,sx,sy,sw,sh,0,0,cw,ch);rx.restore();
+      rx.strokeStyle="#fff";rx.lineWidth=2;rx.strokeRect(cx,cy,cw,ch)}}
   const y0=410+rh+8;
   rx.fillStyle=COL("--panel");rx.fillRect(8,y0,RW-16,78);
   rx.fillStyle=COL("--fg");rx.font="bold 40px "+COL("--font");rx.textBaseline="middle";rx.textAlign="left";
