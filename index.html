@@ -150,8 +150,8 @@ summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
       <select id="sRate"><option value="1" selected>1.0倍</option><option value="0.9">0.9倍</option><option value="0.8">0.8倍</option><option value="0.7">0.7倍</option></select></label>
     <label>録画（画面と声）
       <select id="sRecv"><option value="1" selected>する</option><option value="0">しない</option></select></label>
-    <label>録画に動画の音も入れる
-      <select id="sMix"><option value="0" selected>入れない（声だけ・音ずれなし）</option><option value="1">入れる（音がずれることあり）</option></select></label>
+    <label>録画に動画の音（オケ）も入れる
+      <select id="sMix"><option value="1" selected>入れる</option><option value="0">入れない（声だけ）</option></select></label>
     <label>顔を録画（前面カメラ）
       <select id="sFace"><option value="0" selected>しない</option><option value="1">する（動画の右下に小さく）</option></select></label>
   </div>
@@ -164,7 +164,7 @@ summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
       <label>オクターブ<select id="sFold"><option value="1" selected>違うオクターブでも可</option><option value="0">同じオクターブのみ</option></select></label>
       <label>基準A（Hz）<select id="sRef"><option>440</option><option>442</option><option selected>443.5</option><option>444</option></select></label>
     </div>
-    <div class="row"><label>マイク感度（右ほど小さい声を拾う）<input id="sGate" type="range" min="1" max="60" value="12"></label></div>
+    <div class="row"><label>マイクの反応しきい値 <span class="muted">（右へ動かすほど、大きい声だけ拾います。歌っていないのに反応する時は右へ。初期は左から12）</span><input id="sGate" type="range" min="1" max="60" value="12"></label></div>
     <div class="row"><button id="bMic">マイクを開始</button><button id="bTone">基準音を鳴らす</button></div>
     <div class="step"><b>データの入れ替え <span class="muted">（通常は不要）</span></b>
       <div class="muted">動画 <span class="stV">未選択</span></div>
@@ -217,7 +217,7 @@ function toast(s){const e=$("toast");e.textContent=s;e.hidden=false;clearTimeout
 
 let rec=null, rep=null, takes=[], mr=null, mrChunks=[], recDest=null, vSrc=null, rc=null, rx=null, lastRc=0, vidUrl=null, vidBlob=null, vidName="";
 /* ---------- 設定 ---------- */
-const S={tol:50,fold:1,ref:443.5,rate:1,gate:12,off:0,loop:false,sm:2,recv:1,face:0,mix:0};
+const S={tol:50,fold:1,ref:443.5,rate:1,gate:12,off:0,loop:false,sm:2,recv:1,face:0,mx:1};
 try{Object.assign(S,JSON.parse(localStorage.getItem("daiku_set3")||"{}"))}catch(e){}
 const save=()=>{try{localStorage.setItem("daiku_set3",JSON.stringify(S))}catch(e){}};
 const SM=[0,120,250,400];   // なめらかさ(ms)
@@ -307,13 +307,13 @@ async function wake(){try{if(navigator.wakeLock)window._wl=await navigator.wakeL
 /* ---------- 設定UI ---------- */
 function syncUI(){
   $("sTol").value=String(S.tol);$("sFold").value=String(S.fold);$("sRate").value=String(S.rate);$("sGate").value=S.gate;
-  $("sOff").value=S.off;$("offTxt").textContent=(S.off>0?"+":"")+S.off;$("sSm").value=String(S.sm);$("sRecv").value=String(S.recv);$("sFace").value=String(S.face);$("sMix").value=String(S.mix);
+  $("sOff").value=S.off;$("offTxt").textContent=(S.off>0?"+":"")+S.off;$("sSm").value=String(S.sm);$("sRecv").value=String(S.recv);$("sFace").value=String(S.face);$("sMix").value=String(S.mx);
   if(![...$("sRef").options].find(x=>+x.value===S.ref))$("sRef").add(new Option(S.ref,S.ref));$("sRef").value=String(S.ref);
   $("bLoop").textContent="フレーズをくり返す: "+(S.loop?"ON":"OFF");$("bLoop").classList.toggle("on",S.loop);
   $("gauge").style.setProperty("--tol",(Math.min(100,S.tol)/100*50)+"%");
   if(!rep)v.playbackRate=S.rate;
 }
-["sTol","sFold","sRef","sRate","sSm","sRecv","sFace","sMix"].forEach(id=>$(id).onchange=()=>{S.tol=+$("sTol").value;S.fold=+$("sFold").value;S.ref=+$("sRef").value;S.rate=+$("sRate").value;S.sm=+$("sSm").value;S.recv=+$("sRecv").value;S.face=+$("sFace").value;if(+$("sMix").value!==S.mix){S.mix=+$("sMix").value;toast("この設定はページを開き直すと反映されます")}save();syncUI();if(S.face)startCam();else stopCam()});
+["sTol","sFold","sRef","sRate","sSm","sRecv","sFace","sMix"].forEach(id=>$(id).onchange=()=>{S.tol=+$("sTol").value;S.fold=+$("sFold").value;S.ref=+$("sRef").value;S.rate=+$("sRate").value;S.sm=+$("sSm").value;S.recv=+$("sRecv").value;S.face=+$("sFace").value;if(+$("sMix").value!==S.mx){S.mx=+$("sMix").value;toast("この設定はページを開き直すと反映されます")}save();syncUI();if(S.face)startCam();else stopCam()});
 $("sGate").oninput=()=>{S.gate=+$("sGate").value;save()};
 function setOff(ms){S.off=Math.max(-1000,Math.min(1000,ms));save();syncUI();if(hasData&&!rep)applyShift(S.off)}
 $("sOff").oninput=()=>setOff(+$("sOff").value);
@@ -429,6 +429,7 @@ function micTick(){
     }
     finalizeUpTo(tc);
   }
+  if(rec&&aEl)audSync(false);
   showMeter(tv);
 }
 function finalizeUpTo(t){
@@ -451,7 +452,16 @@ function fillScore(){
 
 /* ---------- 記録(テイク)・録画・振り返り ---------- */
 DB.get("takes").then(t=>{if(Array.isArray(t))takes=t;renderTakes()});
-let camStream=null,camTried=false;
+let camStream=null,camTried=false,aEl=null,aSrc=null;
+function audSync(force){
+  if(!aEl||!S.mx)return;
+  try{
+    if(aEl.playbackRate!==v.playbackRate)aEl.playbackRate=v.playbackRate;
+    if(v.paused||v.seeking){if(!aEl.paused)aEl.pause();return}
+    if(force||Math.abs(aEl.currentTime-v.currentTime)>0.12)aEl.currentTime=v.currentTime;
+    if(aEl.paused)aEl.play().catch(()=>{});
+  }catch(e){}
+}
 async function startCam(){
   if(camStream)return;camTried=true;
   try{
@@ -465,8 +475,9 @@ function setupRecGraph(){
   try{
     recDest=actx.createMediaStreamDestination();
     const g=actx.createGain();g.gain.value=1.5;micSrc.connect(g);g.connect(recDest);
-    // 動画の音を録画に混ぜると、再生音がWeb Audio経由になり遅れることがあるため、初期はオフ（声だけ録音）
-    if(S.mix){vSrc=actx.createMediaElementSource(v);vSrc.connect(actx.destination);vSrc.connect(recDest)}
+    // 動画の音(オケ)は、再生中の動画とは別の音声プレーヤーで同時に鳴らして録音側にだけ流す。
+    // 再生中の動画自体はWeb Audioを通さないため、聞こえる音のタイミングは変わらない。
+    if(S.mx){aEl=new Audio();aEl.preload="auto";aEl.src=v.currentSrc||v.src;aSrc=actx.createMediaElementSource(aEl);aSrc.connect(recDest)}
     return true;
   }catch(e){recDest=null;return false}
 }
@@ -514,12 +525,12 @@ function startRec(){
       const mt=pickMime();mrChunks=[];
       mr=new MediaRecorder(stream,mt?{mimeType:mt,videoBitsPerSecond:1500000}:{videoBitsPerSecond:1500000});
       mr.ondataavailable=e=>{if(e.data&&e.data.size)mrChunks.push(e.data)};
-      mr.start(1000);rec.mime=mr.mimeType||mt;lastRc=0;
+      mr.start(1000);rec.mime=mr.mimeType||mt;lastRc=0;audSync(true);
     }catch(e){mr=null}
   }
 }
 function endRec(){
-  const r=rec;rec=null;if(!r)return;
+  const r=rec;rec=null;if(aEl)try{aEl.pause()}catch(e){}if(!r)return;
   const finish=async blob=>{
     if(r.t1-r.t0<3||r.s.length<20)return;
     let sw=0,sr=0;for(const k in r.r){sw+=r.r[k][1];sr+=r.r[k][0]*r.r[k][1]}
