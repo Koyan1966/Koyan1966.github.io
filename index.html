@@ -297,7 +297,7 @@ document.querySelectorAll(".sheet").forEach(s=>s.addEventListener("click",e=>{if
 const play=()=>{if(!hasVideo||!hasData){openSheet("shInit");return}v.playbackRate=(rep&&rep.rate)||S.rate;v.play().catch(()=>{});wake()};
 $("bPlay").onclick=async()=>{
   if(!v.paused){v.pause();return}
-  if(!micOn&&!micTried&&!rep)await startMic();
+  if(!rep&&!micAlive())await startMic();
   if(S.face&&!camStream&&!camTried&&!rep)await startCam();
   play();
 };
@@ -367,12 +367,31 @@ function yin(b,sr){
   const a=cm[tau-1],b0=cm[tau],c=cm[tau+1];const den=a-2*b0+c;const sh=den!==0?(a-c)/(2*den):0;
   return {f:sr/(tau+sh),cl:1-b0};
 }
+function micAlive(){
+  try{const t=micStream&&micStream.getAudioTracks()[0];return !!(micOn&&t&&t.readyState==="live"&&actx&&actx.state==="running")}catch(e){return false}
+}
+function micCleanup(){
+  clearInterval(timer);timer=null;micOn=false;
+  try{if(micStream)micStream.getTracks().forEach(t=>{t.onended=null;t.stop()})}catch(e){}
+  try{if(micSrc)micSrc.disconnect()}catch(e){}
+  try{if(aSrc)aSrc.disconnect()}catch(e){}
+  try{if(aEl)aEl.pause()}catch(e){}
+  micStream=null;micSrc=null;an=null;recDest=null;aEl=null;aSrc=null;
+}
+function onMicLost(){
+  if(rec&&!v.paused)v.pause();
+  micOn=false;$("bMic").textContent="マイクを再接続";$("verdict").textContent="マイクが切れました";
+  toast("マイクが切れました。▶ を押すと自動で再接続します");
+}
 async function startMic(){
-  micTried=true;
+  micTried=true;micCleanup();
   try{
     const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
     micStream=st;
-    actx=actx||new (window.AudioContext||window.webkitAudioContext)();await actx.resume();
+    st.getAudioTracks().forEach(t=>{t.onended=onMicLost});
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    actx.onstatechange=()=>{if(actx.state!=="running"&&actx.state!=="closed"){actx.resume().catch(()=>{})}};
+    await actx.resume();
     micSrc=actx.createMediaStreamSource(st);an=actx.createAnalyser();an.fftSize=4096;micSrc.connect(an);
     abuf=new Float32Array(an.fftSize);micOn=true;$("bMic").textContent="マイク動作中";
     $("verdict").textContent="声を出してください";
@@ -382,7 +401,8 @@ async function startMic(){
     toast("マイクが使えません。Safariの設定でこのサイトのマイクを許可してください（採点と録画なしで再生だけ続けます）");
   }
 }
-$("bMic").onclick=()=>{if(!micOn)startMic()};
+$("bMic").onclick=()=>{startMic()};
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&actx&&actx.state!=="running")actx.resume().catch(()=>{})});
 $("bTone").onclick=async()=>{
   actx=actx||new (window.AudioContext||window.webkitAudioContext)();await actx.resume();
   const t=v.currentTime;let i=notes.findIndex(n=>n.t1>t);if(i<0)return;const n=notes[i];
