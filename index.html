@@ -136,9 +136,9 @@ summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
   <h2>設定</h2>
   <div class="row">
     <label>タイミング補正 <b id="offTxt">0</b> ms <span class="muted">（＋で目標バーが遅れ、−で早まります）</span>
-      <input id="sOff" type="range" min="-500" max="500" step="20" value="0"></label>
+      <input id="sOff" type="range" min="-1000" max="1000" step="20" value="0"></label>
   </div>
-  <div class="row"><button id="bOffM">−20</button><button id="bOff0">0に戻す</button><button id="bOffP">＋20</button></div>
+  <div class="row"><button id="bOffM2">−100</button><button id="bOffM">−20</button><button id="bOff0">0</button><button id="bOffP">＋20</button><button id="bOffP2">＋100</button></div>
   <div class="row">
     <label>声の線のなめらかさ
       <select id="sSm"><option value="0">なし（細かい）</option><option value="1">弱</option><option value="2" selected>中</option><option value="3">強（大まか）</option></select></label>
@@ -150,6 +150,8 @@ summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
       <select id="sRate"><option value="1" selected>1.0倍</option><option value="0.9">0.9倍</option><option value="0.8">0.8倍</option><option value="0.7">0.7倍</option></select></label>
     <label>録画（画面と声）
       <select id="sRecv"><option value="1" selected>する</option><option value="0">しない</option></select></label>
+    <label>録画に動画の音も入れる
+      <select id="sMix"><option value="0" selected>入れない（声だけ・音ずれなし）</option><option value="1">入れる（音がずれることあり）</option></select></label>
     <label>顔を録画（前面カメラ）
       <select id="sFace"><option value="0" selected>しない</option><option value="1">する（動画の右下に小さく）</option></select></label>
   </div>
@@ -215,7 +217,7 @@ function toast(s){const e=$("toast");e.textContent=s;e.hidden=false;clearTimeout
 
 let rec=null, rep=null, takes=[], mr=null, mrChunks=[], recDest=null, vSrc=null, rc=null, rx=null, lastRc=0, vidUrl=null, vidBlob=null, vidName="";
 /* ---------- 設定 ---------- */
-const S={tol:50,fold:1,ref:443.5,rate:1,gate:12,off:0,loop:false,sm:2,recv:1,face:0};
+const S={tol:50,fold:1,ref:443.5,rate:1,gate:12,off:0,loop:false,sm:2,recv:1,face:0,mix:0};
 try{Object.assign(S,JSON.parse(localStorage.getItem("daiku_set3")||"{}"))}catch(e){}
 const save=()=>{try{localStorage.setItem("daiku_set3",JSON.stringify(S))}catch(e){}};
 const SM=[0,120,250,400];   // なめらかさ(ms)
@@ -305,17 +307,17 @@ async function wake(){try{if(navigator.wakeLock)window._wl=await navigator.wakeL
 /* ---------- 設定UI ---------- */
 function syncUI(){
   $("sTol").value=String(S.tol);$("sFold").value=String(S.fold);$("sRate").value=String(S.rate);$("sGate").value=S.gate;
-  $("sOff").value=S.off;$("offTxt").textContent=(S.off>0?"+":"")+S.off;$("sSm").value=String(S.sm);$("sRecv").value=String(S.recv);$("sFace").value=String(S.face);
+  $("sOff").value=S.off;$("offTxt").textContent=(S.off>0?"+":"")+S.off;$("sSm").value=String(S.sm);$("sRecv").value=String(S.recv);$("sFace").value=String(S.face);$("sMix").value=String(S.mix);
   if(![...$("sRef").options].find(x=>+x.value===S.ref))$("sRef").add(new Option(S.ref,S.ref));$("sRef").value=String(S.ref);
   $("bLoop").textContent="フレーズをくり返す: "+(S.loop?"ON":"OFF");$("bLoop").classList.toggle("on",S.loop);
   $("gauge").style.setProperty("--tol",(Math.min(100,S.tol)/100*50)+"%");
   if(!rep)v.playbackRate=S.rate;
 }
-["sTol","sFold","sRef","sRate","sSm","sRecv","sFace"].forEach(id=>$(id).onchange=()=>{S.tol=+$("sTol").value;S.fold=+$("sFold").value;S.ref=+$("sRef").value;S.rate=+$("sRate").value;S.sm=+$("sSm").value;S.recv=+$("sRecv").value;S.face=+$("sFace").value;save();syncUI();if(S.face)startCam();else stopCam()});
+["sTol","sFold","sRef","sRate","sSm","sRecv","sFace","sMix"].forEach(id=>$(id).onchange=()=>{S.tol=+$("sTol").value;S.fold=+$("sFold").value;S.ref=+$("sRef").value;S.rate=+$("sRate").value;S.sm=+$("sSm").value;S.recv=+$("sRecv").value;S.face=+$("sFace").value;if(+$("sMix").value!==S.mix){S.mix=+$("sMix").value;toast("この設定はページを開き直すと反映されます")}save();syncUI();if(S.face)startCam();else stopCam()});
 $("sGate").oninput=()=>{S.gate=+$("sGate").value;save()};
-function setOff(ms){S.off=Math.max(-500,Math.min(500,ms));save();syncUI();if(hasData&&!rep)applyShift(S.off)}
+function setOff(ms){S.off=Math.max(-1000,Math.min(1000,ms));save();syncUI();if(hasData&&!rep)applyShift(S.off)}
 $("sOff").oninput=()=>setOff(+$("sOff").value);
-$("bOffM").onclick=()=>setOff(S.off-20);$("bOffP").onclick=()=>setOff(S.off+20);$("bOff0").onclick=()=>setOff(0);
+$("bOffM2").onclick=()=>setOff(S.off-100);$("bOffP2").onclick=()=>setOff(S.off+100);$("bOffM").onclick=()=>setOff(S.off-20);$("bOffP").onclick=()=>setOff(S.off+20);$("bOff0").onclick=()=>setOff(0);
 syncUI();
 
 /* ---------- ずれの記録 ---------- */
@@ -463,7 +465,8 @@ function setupRecGraph(){
   try{
     recDest=actx.createMediaStreamDestination();
     const g=actx.createGain();g.gain.value=1.5;micSrc.connect(g);g.connect(recDest);
-    vSrc=actx.createMediaElementSource(v);vSrc.connect(actx.destination);vSrc.connect(recDest);
+    // 動画の音を録画に混ぜると、再生音がWeb Audio経由になり遅れることがあるため、初期はオフ（声だけ録音）
+    if(S.mix){vSrc=actx.createMediaElementSource(v);vSrc.connect(actx.destination);vSrc.connect(recDest)}
     return true;
   }catch(e){recDest=null;return false}
 }
