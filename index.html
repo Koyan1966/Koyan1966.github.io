@@ -78,18 +78,29 @@ details{background:var(--panel);border:1px solid var(--line);border-radius:10px;
 summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:#000c;border:1px solid var(--line);border-radius:999px;padding:8px 16px;z-index:40;font-size:14px;max-width:90vw}
 #vidPlayer{width:100%;max-height:60dvh;background:#000;border-radius:10px}
-@media (orientation:landscape) and (max-height:520px){
-  #app{grid-template-columns:42% 1fr;grid-template-rows:auto 1fr auto auto}
-  header{grid-column:1/3}
-  #vwrap{grid-column:1;grid-row:2;max-height:none;align-self:start}
-  #rollwrap{grid-column:2;grid-row:2}
-  #meter{grid-column:1/3;grid-row:3}
-  #ctl{grid-column:1/3;grid-row:4}
-}
+#left{display:contents}
+header{order:1}#vwrap{order:2}#rollwrap{order:3}#meter{order:4}#ctlbox{order:5}
+#app.split{grid-template-columns:37% 1fr;grid-template-rows:1fr;column-gap:10px}
+#app.split #left{display:flex;flex-direction:column;gap:8px;grid-column:1;grid-row:1;min-height:0;overflow:auto}
+#app.split header h1{display:none}
+#app.split header .chip{flex:1}
+#app.split #vwrap{display:block;aspect-ratio:16/9;max-height:none;position:relative;flex:none}
+#app.split video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#app.split #meter{grid-template-columns:46px 1fr 74px;gap:6px;flex:none;min-height:44px;padding:4px 8px}
+#app.split #verdict{font-size:11px;white-space:nowrap}
+#app.split #noteName{font-size:20px}
+#app.split #ctl{grid-template-columns:repeat(6,1fr);gap:4px;margin-top:4px!important}
+#app.split #ctl button{min-height:40px;font-size:12px}
+#app.split header{min-height:36px}
+#app.split header .chip,#app.split header button{min-height:36px;padding:0 8px}
+#app.split #left{gap:6px}
+#app.split #rollwrap{grid-column:2;grid-row:1;min-height:0}
+
 </style>
 </head>
 <body>
 <div id="app">
+  <div id="left">
   <header>
     <h1>第九 テノール1 練習</h1>
     <button id="bScore" class="chip" aria-label="点数を見る">点数 <b id="liveScore">--</b></button>
@@ -98,15 +109,12 @@ summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
   </header>
   <div id="vwrap"><video id="v" playsinline webkit-playsinline preload="auto"></video></div>
   <video id="cam" muted playsinline style="position:fixed;width:2px;height:2px;opacity:0;pointer-events:none"></video>
-  <div id="rollwrap"><canvas id="cv"></canvas><div id="lyric"></div>
-    <button id="bMark" aria-label="ずれを記録">⚑ ずれ</button>
-    <div id="repBar" hidden><span id="repTxt"></span><button id="bRepEnd">終了</button></div></div>
   <div id="meter">
     <div id="noteName">--</div>
     <div id="gauge" style="--tol:25%"><div class="track"></div><div class="zone"></div><div class="mid"></div><div id="needle"></div></div>
     <div id="verdict" class="muted">待機中</div>
   </div>
-  <div>
+  <div id="ctlbox">
     <input id="seek" type="range" min="0" max="1000" value="0" step="0.1" aria-label="再生位置">
     <div id="ctl" style="margin-top:6px">
       <button id="bPrev" aria-label="前のフレーズ">⏮</button>
@@ -117,6 +125,10 @@ summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
       <button id="bList" aria-label="フレーズ一覧">一覧</button>
     </div>
   </div>
+  </div>
+  <div id="rollwrap"><canvas id="cv"></canvas><div id="lyric"></div>
+    <button id="bMark" aria-label="ずれを記録">⚑ ずれ</button>
+    <div id="repBar" hidden><span id="repTxt"></span><button id="bRepEnd">終了</button></div></div>
 </div>
 <div id="toast" hidden></div>
 
@@ -152,6 +164,8 @@ summary{min-height:36px;display:flex;align-items:center;cursor:pointer}
       <select id="sRecv"><option value="1" selected>する</option><option value="0">しない</option></select></label>
     <label>録画に動画の音（オケ）も入れる
       <select id="sMix"><option value="1" selected>入れる</option><option value="0">入れない（声だけ）</option></select></label>
+    <label>画面の並び
+      <select id="sLay"><option value="0" selected>自動（横向きは左右に分ける）</option><option value="1">いつも左右（動画が左・ゲージが右）</option><option value="2">いつも縦並び</option></select></label>
     <label>顔を録画（前面カメラ）
       <select id="sFace"><option value="0" selected>しない</option><option value="1">する（動画の右下に小さく）</option></select></label>
   </div>
@@ -217,7 +231,7 @@ function toast(s){const e=$("toast");e.textContent=s;e.hidden=false;clearTimeout
 
 let rec=null, rep=null, takes=[], mr=null, mrChunks=[], recDest=null, vSrc=null, rc=null, rx=null, lastRc=0, vidUrl=null, vidBlob=null, vidName="";
 /* ---------- 設定 ---------- */
-const S={tol:50,fold:1,ref:443.5,rate:1,gate:12,off:0,loop:false,sm:2,recv:1,face:0,mx:1};
+const S={tol:50,fold:1,ref:443.5,rate:1,gate:12,off:0,loop:false,sm:2,recv:1,face:0,mx:1,lay:0};
 try{Object.assign(S,JSON.parse(localStorage.getItem("daiku_set3")||"{}"))}catch(e){}
 const save=()=>{try{localStorage.setItem("daiku_set3",JSON.stringify(S))}catch(e){}};
 const SM=[0,120,250,400];   // なめらかさ(ms)
@@ -307,13 +321,13 @@ async function wake(){try{if(navigator.wakeLock)window._wl=await navigator.wakeL
 /* ---------- 設定UI ---------- */
 function syncUI(){
   $("sTol").value=String(S.tol);$("sFold").value=String(S.fold);$("sRate").value=String(S.rate);$("sGate").value=S.gate;
-  $("sOff").value=S.off;$("offTxt").textContent=(S.off>0?"+":"")+S.off;$("sSm").value=String(S.sm);$("sRecv").value=String(S.recv);$("sFace").value=String(S.face);$("sMix").value=String(S.mx);
+  $("sOff").value=S.off;$("offTxt").textContent=(S.off>0?"+":"")+S.off;$("sSm").value=String(S.sm);$("sRecv").value=String(S.recv);$("sFace").value=String(S.face);$("sLay").value=String(S.lay);$("sMix").value=String(S.mx);
   if(![...$("sRef").options].find(x=>+x.value===S.ref))$("sRef").add(new Option(S.ref,S.ref));$("sRef").value=String(S.ref);
   $("bLoop").textContent="フレーズをくり返す: "+(S.loop?"ON":"OFF");$("bLoop").classList.toggle("on",S.loop);
   $("gauge").style.setProperty("--tol",(Math.min(100,S.tol)/100*50)+"%");
   if(!rep)v.playbackRate=S.rate;
 }
-["sTol","sFold","sRef","sRate","sSm","sRecv","sFace","sMix"].forEach(id=>$(id).onchange=()=>{S.tol=+$("sTol").value;S.fold=+$("sFold").value;S.ref=+$("sRef").value;S.rate=+$("sRate").value;S.sm=+$("sSm").value;S.recv=+$("sRecv").value;S.face=+$("sFace").value;if(+$("sMix").value!==S.mx){S.mx=+$("sMix").value;toast("この設定はページを開き直すと反映されます")}save();syncUI();if(S.face)startCam();else stopCam()});
+["sTol","sFold","sRef","sRate","sSm","sRecv","sFace","sMix","sLay"].forEach(id=>$(id).onchange=()=>{S.tol=+$("sTol").value;S.fold=+$("sFold").value;S.ref=+$("sRef").value;S.rate=+$("sRate").value;S.sm=+$("sSm").value;S.recv=+$("sRecv").value;S.face=+$("sFace").value;S.lay=+$("sLay").value;applyLay();if(+$("sMix").value!==S.mx){S.mx=+$("sMix").value;toast("この設定はページを開き直すと反映されます")}save();syncUI();if(S.face)startCam();else stopCam()});
 $("sGate").oninput=()=>{S.gate=+$("sGate").value;save()};
 function setOff(ms){S.off=Math.max(-1000,Math.min(1000,ms));save();syncUI();if(hasData&&!rep)applyShift(S.off)}
 $("sOff").oninput=()=>setOff(+$("sOff").value);
@@ -617,8 +631,13 @@ function showMeter(tv,force){
   vd.textContent=ok?"合っています":(c>0?"高い +":"低い −")+Math.abs(Math.round(c));vd.style.color=ok?COL("--hit"):COL("--miss");
 }
 const LO=45,HI=72,TP=2.5,TF=6;
+function applyLay(){
+  const land=matchMedia("(orientation:landscape) and (max-height:520px)").matches;
+  $("app").classList.toggle("split",S.lay===1||(S.lay===0&&land));
+  requestAnimationFrame(()=>resize());
+}
 function resize(){const r=cv.getBoundingClientRect(),d=Math.min(2,window.devicePixelRatio||1);cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
-addEventListener("resize",resize);resize();
+addEventListener("resize",()=>{applyLay()});applyLay();resize();
 function lineTo(pts,X,y){
   // 点列を連続した線でつなぐ(時間が空いたら切る)。色は合否で変える
   ctx.lineWidth=3.6;ctx.lineCap="round";ctx.lineJoin="round";
